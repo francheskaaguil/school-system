@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Profile</title>
+</head>
+
+<body class="dashboard-page">
+
+    <aside class="sidebar">
+        <img src="2.webp" class="logo" width="100" height="100" alt="Logo">
+        <h2>My Dashboard</h2>
+        <div id="navStatus" class="nav-status">Status: Loading...</div>
+
+        <a id="dashboardLink" href="StudentDashboard.html">Dashboard</a>
+        <a class="active" href="profile.html"> My Profile</a>
+        <a href="#" onclick="logout()">Logout</a>
+
+    </aside>
+
+    <main class="dashboard">
+
+        <h1>My Profile</h1>
+
+        <section class="card">
+
+            <img id="profilePicture" src="2.webp" class="profile-picture" width="100" height="100" alt="Profile picture">
+
+            <div>
+                <h2 id="fullName">Loading...</h2>
+                <p id="roleLabel">School System User</p>
+            </div>
+
+        </section>
+
+        <section class="info-card">
+
+            <div class="info-header">
+
+                <h2>Personal Information</h2>
+
+                <button id="editButton" class="edit-button" type="button" onclick="editProfile()">
+                    Edit Profile
+                </button>
+
+            </div>
+
+            <div id="personalInfo"></div>
+
+        </section>
+
+    </main>
+
+    <script>
+
+        const savedUser = JSON.parse(
+            localStorage.getItem("user")
+        );
+
+        let currentUser;
+
+        if (!savedUser) location.href = "index.html";
+
+        async function loadProfile() {
+
+            try {
+
+                const response = await fetch(
+                    `/api/profile?email=${encodeURIComponent(savedUser.email)}`
+                );
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert(result.message);
+                    return;
+                }
+
+                currentUser = result.user;
+                showProfile();
+
+            } catch (error) {
+
+                alert("Cannot connect to Flask.");
+                console.log(error);
+
+            }
+        }
+
+        function showProfile() {
+
+            document.getElementById("fullName").textContent =
+                `${currentUser.firstName} ${currentUser.lastName}`;
+            document.getElementById("profilePicture").src = currentUser.profilePicture || "gela.jpeg";
+            document.getElementById("roleLabel").textContent =
+                `${currentUser.role.charAt(0).toUpperCase()}${currentUser.role.slice(1)} Account`;
+
+            const fields = [
+                ["First Name", currentUser.firstName],
+                ["Last Name", currentUser.lastName],
+                ["Email", currentUser.email],
+                ["Date of Birth", currentUser.dateOfBirth],
+                ["Phone", currentUser.phone],
+                ["Gender", currentUser.gender],
+                ["Address", currentUser.address]
+            ];
+
+            document.getElementById("personalInfo").innerHTML = fields.map(([label, value]) =>
+                `<p><b>${label}:</b> ${escapeHtml(value)}</p>`
+            ).join("");
+        }
+
+        function editProfile() {
+
+            document.getElementById("personalInfo").innerHTML = `
+                <div class="profile-form">
+                    <div><label for="firstName">First Name</label><input id="firstName" value="${escapeHtml(currentUser.firstName)}" required></div>
+                    <div><label for="lastName">Last Name</label><input id="lastName" value="${escapeHtml(currentUser.lastName)}" required></div>
+                    <div><label>Email</label><input value="${escapeHtml(currentUser.email)}" disabled></div>
+                    <div><label for="dateOfBirth">Date of Birth</label><input id="dateOfBirth" type="date" value="${escapeHtml(currentUser.dateOfBirth)}" required></div>
+                    <div><label for="phone">Phone</label><input id="phone" value="${escapeHtml(currentUser.phone)}" required></div>
+                    <div><label for="gender">Gender</label><input id="gender" value="${escapeHtml(currentUser.gender)}" required></div>
+                    <div class="full-width"><label for="address">Address</label><input id="address" value="${escapeHtml(currentUser.address)}" required></div>
+                    <div class="form-actions"><button class="save-button" type="button" onclick="saveProfile()">Save</button><button class="cancel-button" type="button" onclick="showProfile()">Cancel</button></div>
+                </div>`;
+        }
+
+        async function saveProfile() {
+
+            const data = {
+                email: currentUser.email,
+                firstName: document.getElementById("firstName").value,
+                lastName: document.getElementById("lastName").value,
+                dateOfBirth: document.getElementById("dateOfBirth").value,
+                phone: document.getElementById("phone").value,
+                gender: document.getElementById("gender").value,
+                address: document.getElementById("address").value
+            };
+
+            try {
+
+                const response = await fetch("/api/profile", {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert(result.message);
+                    return;
+                }
+
+                currentUser = {
+                    ...currentUser,
+                    ...data
+                };
+
+                localStorage.setItem(
+                    "user",
+                    JSON.stringify(currentUser)
+                );
+
+                alert("Profile updated!");
+
+                showProfile();
+
+            } catch (error) {
+
+                alert("Cannot connect to Flask.");
+                console.log(error);
+
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem("user");
+            location.href = "index.html";
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? "").replace(/[&<>'"]/g, character => ({
+                "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+            })[character]);
+        }
+
+        if (savedUser) {
+            const dashboards = {
+                student: "StudentDashboard.html",
+                staff: "StaffDashboard.html",
+                admin: "AdminDashboard.html"
+            };
+            const navStatus = document.getElementById("navStatus");
+            const accountStatus = savedUser.accountStatus || "Active";
+            navStatus.textContent = `Status: ${accountStatus}`;
+            navStatus.classList.add(accountStatus === "Active" ? "active" : "inactive");
+            document.getElementById("dashboardLink").href = dashboards[savedUser.role] || "StudentDashboard.html";
+            loadProfile();
+        }
+
+    </script>
+
+</body>
+</html>

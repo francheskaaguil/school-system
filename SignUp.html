@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Sign Up</title>
+</head>
+
+<body>
+
+    <main class="form-container">
+
+        <img src="2.webp" class="logo" width="100" height="100">
+
+        <h1>Sign Up</h1>
+
+        <form id="signupForm">
+
+            <label>First Name</label>
+            <input type="text" name="firstName" required>
+
+            <label>Last Name</label>
+            <input type="text" name="lastName" required>
+
+            <label>Email</label>
+            <input type="email" name="email" required>
+
+            <label>Date of Birth</label>
+            <input type="date" name="dateOfBirth" required>
+
+            <label>Phone Number</label>
+            <input type="tel" name="phone" required>
+
+            <label>Address</label>
+            <input type="text" name="address" required>
+
+            <label>Gender</label>
+            <select name="gender" required>
+                <option value="">Select Gender</option>
+                <option>Male</option>
+                <option>Female</option>
+                <option>Other</option>
+            </select>
+
+            <label>Account Role</label>
+            <select name="role" required>
+                <option value="student">Student</option>
+                <option value="staff">Staff</option>
+            </select>
+
+            <label>Password</label>
+            <input type="password" name="password" required>
+
+            <label>Confirm Password</label>
+            <input type="password" name="confirmPassword" required>
+
+            <button type="submit">Sign Up</button>
+
+        </form>
+
+        <p>
+            Already have an account?
+            <a href="index.html">Login</a>
+        </p>
+
+    </main>
+
+    <script>
+        document.getElementById("signupForm").onsubmit = async function(e) {
+            e.preventDefault();
+
+            const data = Object.fromEntries(new FormData(this));
+
+            if (data.password !== data.confirmPassword) {
+                alert("Passwords do not match.");
+                return;
+            }
+
+            delete data.confirmPassword;
+
+            try {
+                const response = await fetch("/api/signup", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert(result.message);
+                    return;
+                }
+
+                alert("Account created successfully!");
+
+                location.href = "index.html";
+
+            } catch (error) {
+                alert("Cannot connect to Flask.");
+                console.log(error);
+            }
+        };
+    </script>
+
+</body>
+</html>

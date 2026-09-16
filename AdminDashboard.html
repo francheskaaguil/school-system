@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Admin Dashboard</title>
+</head>
+<body class="dashboard-page">
+    <aside class="sidebar">
+        <img src="2.webp" class="logo" alt="School logo">
+        <h2>School System</h2>
+        <div id="navStatus" class="nav-status">Status: Loading...</div>
+        <a class="active" href="AdminDashboard.html">Dashboard</a>
+        <a href="Subjects.html">Subjects</a>
+        <a href="profile.html">My Profile</a>
+        <a href="#" onclick="logout(); return false;">Logout</a>
+    </aside>
+
+    <main class="dashboard">
+        <div class="page-heading">
+            <div><h1>Dashboard</h1><p id="welcome">Welcome back!</p></div>
+        </div>
+
+        <section class="stats-grid">
+            <article class="stat-card"><div><small>Total Students</small><strong id="studentCount">0</strong></div></article>
+            <article class="stat-card"><div><small>Total Staff</small><strong id="staffCount">0</strong></div></article>
+            <article class="stat-card"><div><small>Active Accounts</small><strong id="activeUserCount">0</strong></div></article>
+            <article class="stat-card"><div><small>Inactive Accounts</small><strong id="inactiveUserCount">0</strong></div></article>
+            <article class="stat-card"><div><small>Total Subjects</small><strong id="subjectCount">0</strong></div></article>
+        </section>
+
+        <section class="content-grid">
+            <article class="info-card" id="attendance">
+                <div class="info-header"><h2>Today's Subject Attendance</h2><button class="edit-button" type="button" onclick="loadAttendance()">Refresh</button></div>
+                <p id="attendanceMessage" class="muted-text">Loading attendance...</p>
+                <div id="attendanceList" class="user-list"></div>
+            </article>
+            <article class="info-card" id="status">
+                <h2>System Status</h2>
+                <ul class="activity-list">
+                    <li>Administrator Account <time>Active</time></li>
+                    <li>Subjects <time id="adminSubjectStatus">Loading...</time></li>
+                    <li>Today's Attendance <time id="adminAttendanceStatus">Loading...</time></li>
+                </ul>
+            </article>
+        </section>
+
+        <section class="content-grid">
+            <article class="info-card" id="subjects">
+                <div class="info-header"><h2>Subjects and Schedule</h2><button class="edit-button" type="button" onclick="clearSubjectForm()">Add Subject</button></div>
+                <p id="subjectMessage" class="muted-text"></p>
+                <div id="adminSubjectList" class="user-list"></div>
+            </article>
+            <article class="info-card" id="subjectEditor" hidden>
+                <div class="info-header"><h2 id="subjectFormTitle">Add Subject</h2><button class="cancel-button" type="button" onclick="closeSubjectForm()">Cancel</button></div>
+                <form id="subjectForm" class="profile-form">
+                    <input id="subjectId" type="hidden">
+                    <div class="full-width"><label for="subjectName">Subject Name</label><input id="subjectName" required></div>
+                    <div><label for="subjectDay">Day</label><select id="subjectDay" required><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option></select></div>
+                    <div><label for="subjectTime">Start Time</label><input id="subjectTime" type="time" required></div>
+                    <div class="form-actions"><button class="save-button" type="submit">Save Subject</button></div>
+                </form>
+            </article>
+        </section>
+
+        <section class="content-grid">
+            <article class="info-card" id="users">
+                <div class="info-header">
+                    <h2>Students and Staff</h2>
+                    <button class="edit-button" type="button" onclick="loadUsers()">Refresh</button>
+                </div>
+                <p id="userMessage" class="muted-text">Loading users...</p>
+                <div id="userList" class="user-list"></div>
+            </article>
+
+            <article class="info-card" id="editCard" hidden>
+                <div class="info-header">
+                    <h2 id="editTitle">Edit User</h2>
+                    <button class="cancel-button" type="button" onclick="closeEditor()">Cancel</button>
+                </div>
+
+                <form id="editUserForm" class="profile-form">
+                    <div><label for="firstName">First Name</label><input id="firstName" required></div>
+                    <div><label for="lastName">Last Name</label><input id="lastName" required></div>
+                    <div><label>Email</label><input id="email" disabled></div>
+                    <div><label>Role</label><input id="role" disabled></div>
+                    <div><label for="accountStatus">Account Status</label><select id="accountStatus" required><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
+                    <div><label for="dateOfBirth">Date of Birth</label><input id="dateOfBirth" type="date" required></div>
+                    <div><label for="phone">Phone</label><input id="phone" required></div>
+                    <div><label for="gender">Gender</label>
+                        <select id="gender" required>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="full-width"><label for="address">Address</label><input id="address" required></div>
+                    <div class="full-width picture-field">
+                        <img id="picturePreview" src="gela.jpeg" class="user-thumbnail" alt="Profile picture preview">
+                        <div><label for="picture">Profile Picture</label><input id="picture" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></div>
+                    </div>
+                    <div class="form-actions"><button class="save-button" type="submit">Save Changes</button></div>
+                </form>
+            </article>
+        </section>
+    </main>
+
+    <script>
+        const user = (() => {
+            try {
+                const savedUser = JSON.parse(localStorage.getItem("user"));
+                return savedUser && typeof savedUser === "object" ? savedUser : null;
+            } catch (error) {
+                return null;
+            }
+        })();
+        let selectedUser = null;
+
+        if (!user) {
+            location.href = "index.html";
+        } else if (user.role !== "admin") {
+            location.href = user.role === "staff" ? "StaffDashboard.html" : "StudentDashboard.html";
+        } else {
+            const navStatus = document.getElementById("navStatus");
+            const accountStatus = user.accountStatus || "Active";
+            navStatus.textContent = `Status: ${accountStatus}`;
+            navStatus.classList.add(accountStatus === "Active" ? "active" : "inactive");
+            document.getElementById("welcome").textContent = `Welcome back, ${user.firstName}!`;
+            loadUsers();
+            loadSubjects();
+            loadAttendance();
+        }
+
+        async function loadUsers() {
+            const message = document.getElementById("userMessage");
+            const list = document.getElementById("userList");
+            message.textContent = "Loading users...";
+            list.replaceChildren();
+
+            try {
+                const response = await fetch(`/api/admin/users?adminEmail=${encodeURIComponent(user.email)}`);
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to load users.");
+
+                const students = result.users.filter(person => person.role === "student");
+                const staff = result.users.filter(person => person.role === "staff");
+                document.getElementById("studentCount").textContent = students.length;
+                document.getElementById("staffCount").textContent = staff.length;
+                document.getElementById("activeUserCount").textContent = result.users.filter(person => person.accountStatus === "Active").length;
+                message.textContent = result.users.length ? "" : "No students or staff found yet.";
+
+                result.users.forEach(person => {
+                    const row = document.createElement("div");
+                    row.className = "user-row";
+
+                    const details = document.createElement("div");
+                    const name = document.createElement("strong");
+                    const info = document.createElement("span");
+                    const statusBadge = document.createElement("div");
+                    name.textContent = `${person.firstName} ${person.lastName}`;
+                    const attendanceText = person.role === "student" ? ` | ${person.todayAttendance} subject(s) marked today` : "";
+                    info.textContent = `${person.role} | ${person.email}${attendanceText}`;
+                    statusBadge.className = `user-status ${person.accountStatus === "Active" ? "active" : "inactive"}`;
+                    statusBadge.textContent = person.accountStatus === "Active" ? "Active" : "Inactive";
+                    details.append(name, document.createElement("br"), info, document.createElement("br"), statusBadge);
+
+                    const editButton = document.createElement("button");
+                    editButton.type = "button";
+                    editButton.className = "edit-button";
+                    editButton.textContent = "Edit";
+                    editButton.addEventListener("click", () => openEditor(person));
+
+                    row.append(details, editButton);
+                    list.append(row);
+                });
+            } catch (error) {
+                message.textContent = error.message || "Unable to load users.";
+            }
+        }
+
+        function openEditor(person) {
+            selectedUser = person;
+            document.getElementById("editTitle").textContent = `Edit ${person.role}: ${person.firstName} ${person.lastName}`;
+            document.getElementById("firstName").value = person.firstName || "";
+            document.getElementById("lastName").value = person.lastName || "";
+            document.getElementById("email").value = person.email || "";
+            document.getElementById("role").value = person.role || "";
+            document.getElementById("accountStatus").value = person.accountStatus || "Active";
+            document.getElementById("picturePreview").src = person.profilePicture || "gela.jpeg";
+            document.getElementById("picture").value = "";
+            document.getElementById("dateOfBirth").value = person.dateOfBirth || "";
+            document.getElementById("phone").value = person.phone || "";
+            document.getElementById("gender").value = person.gender || "Other";
+            document.getElementById("address").value = person.address || "";
+            document.getElementById("editCard").hidden = false;
+            document.getElementById("editCard").scrollIntoView({ block: "start" });
+        }
+
+        function closeEditor() {
+            selectedUser = null;
+            document.getElementById("editUserForm").reset();
+            document.getElementById("editCard").hidden = true;
+        }
+
+        document.getElementById("editUserForm").addEventListener("submit", async event => {
+            event.preventDefault();
+            if (!selectedUser) return;
+
+            const data = {
+                adminEmail: user.email,
+                firstName: document.getElementById("firstName").value.trim(),
+                lastName: document.getElementById("lastName").value.trim(),
+                dateOfBirth: document.getElementById("dateOfBirth").value,
+                phone: document.getElementById("phone").value.trim(),
+                gender: document.getElementById("gender").value,
+                address: document.getElementById("address").value.trim(),
+                accountStatus: document.getElementById("accountStatus").value
+            };
+
+            try {
+                const response = await fetch(`/api/admin/users/${encodeURIComponent(selectedUser.email)}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to save changes.");
+                const picture = document.getElementById("picture").files[0];
+                if (picture) await uploadPicture(picture);
+                alert(result.message);
+                closeEditor();
+                loadUsers();
+            } catch (error) {
+                alert(error.message || "Unable to save changes.");
+            }
+        });
+
+        document.getElementById("picture").addEventListener("change", event => {
+            const picture = event.target.files[0];
+            if (!picture) return;
+            document.getElementById("picturePreview").src = URL.createObjectURL(picture);
+        });
+
+        async function uploadPicture(picture) {
+            const data = new FormData();
+            data.append("adminEmail", user.email);
+            data.append("picture", picture);
+            const response = await fetch(`/api/admin/users/${encodeURIComponent(selectedUser.email)}/picture`, {
+                method: "POST",
+                body: data
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Unable to upload picture.");
+        }
+
+        async function loadSubjects() {
+            const message = document.getElementById("subjectMessage");
+            const list = document.getElementById("adminSubjectList");
+            try {
+                const response = await fetch(`/api/subjects?email=${encodeURIComponent(user.email)}`);
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to load subjects.");
+                const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                document.getElementById("subjectCount").textContent = result.subjects.length;
+                document.getElementById("adminSubjectStatus").textContent = `${result.subjects.length} subjects active`;
+                message.textContent = result.subjects.length ? "" : "No subjects added yet.";
+                list.replaceChildren();
+                result.subjects.forEach(subject => {
+                    const row = document.createElement("div");
+                    row.className = "user-row";
+                    const details = document.createElement("div");
+                    const name = document.createElement("strong");
+                    const info = document.createElement("span");
+                    name.textContent = subject.name;
+                    info.textContent = `${days[subject.dayOfWeek]} | ${subject.startTime}`;
+                    details.append(name, document.createElement("br"), info);
+                    const edit = document.createElement("button");
+                    edit.type = "button"; edit.className = "edit-button"; edit.textContent = "Edit";
+                    edit.addEventListener("click", () => editSubject(subject));
+                    const remove = document.createElement("button");
+                    remove.type = "button"; remove.className = "cancel-button"; remove.textContent = "Delete";
+                    remove.addEventListener("click", () => deleteSubject(subject));
+                    row.append(details, edit, remove);
+                    list.append(row);
+                });
+            } catch (error) { message.textContent = error.message || "Unable to load subjects."; }
+        }
+
+        function clearSubjectForm() {
+            document.getElementById("subjectForm").reset();
+            document.getElementById("subjectId").value = "";
+            document.getElementById("subjectFormTitle").textContent = "Add Subject";
+            document.getElementById("subjectEditor").hidden = false;
+        }
+
+        function editSubject(subject) {
+            document.getElementById("subjectId").value = subject.id;
+            document.getElementById("subjectName").value = subject.name;
+            document.getElementById("subjectDay").value = subject.dayOfWeek;
+            document.getElementById("subjectTime").value = subject.startTime;
+            document.getElementById("subjectFormTitle").textContent = "Edit Subject";
+            document.getElementById("subjectEditor").hidden = false;
+        }
+
+        function closeSubjectForm() { document.getElementById("subjectEditor").hidden = true; }
+
+        document.getElementById("subjectForm").addEventListener("submit", async event => {
+            event.preventDefault();
+            const id = document.getElementById("subjectId").value;
+            const data = { adminEmail: user.email, name: document.getElementById("subjectName").value.trim(), dayOfWeek: Number(document.getElementById("subjectDay").value), startTime: document.getElementById("subjectTime").value };
+            if (id) data.id = Number(id);
+            try {
+                const response = await fetch("/api/admin/subjects", { method: id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to save subject.");
+                closeSubjectForm(); loadSubjects();
+            } catch (error) { alert(error.message || "Unable to save subject."); }
+        });
+
+        async function deleteSubject(subject) {
+            if (!confirm(`Delete ${subject.name}?`)) return;
+            try {
+                const response = await fetch("/api/admin/subjects", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adminEmail: user.email, id: subject.id }) });
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to delete subject.");
+                loadSubjects();
+            } catch (error) { alert(error.message || "Unable to delete subject."); }
+        }
+
+        async function loadAttendance() {
+            const message = document.getElementById("attendanceMessage");
+            const list = document.getElementById("attendanceList");
+            try {
+                const response = await fetch(`/api/admin/subject-attendance?adminEmail=${encodeURIComponent(user.email)}`);
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to load attendance.");
+                message.textContent = result.records.length ? "" : "No subject attendance has been marked today.";
+                document.getElementById("adminAttendanceStatus").textContent = `${result.records.length} record(s) today`;
+                list.replaceChildren();
+                result.records.forEach(record => {
+                    const row = document.createElement("div"); row.className = "user-row";
+                    const details = document.createElement("div");
+                    const name = document.createElement("strong"); const info = document.createElement("span");
+                    name.textContent = `${record.first_name} ${record.last_name} - ${record.subject}`;
+                    info.textContent = record.status;
+                    details.append(name, document.createElement("br"), info);
+                    const select = document.createElement("select"); select.className = "attendance-select";
+                    ["Present", "Late", "Absent"].forEach(status => select.add(new Option(status, status, false, status === record.status)));
+                    select.addEventListener("change", () => updateAttendance(record, select.value));
+                    row.append(details, select); list.append(row);
+                });
+            } catch (error) { message.textContent = error.message || "Unable to load attendance."; }
+        }
+
+        async function updateAttendance(record, status) {
+            try {
+                const response = await fetch("/api/admin/subject-attendance", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adminEmail: user.email, email: record.email, subject: record.subject, status }) });
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to update attendance.");
+                loadAttendance();
+            } catch (error) { alert(error.message || "Unable to update attendance."); }
+        }
+
+        function logout() { localStorage.removeItem("user"); location.href = "index.html"; }
+    </script>
+</body>
+</html>
