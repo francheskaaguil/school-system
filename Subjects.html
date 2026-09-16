@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Subjects</title>
+</head>
+<body class="dashboard-page">
+    <aside class="sidebar">
+        <img src="2.webp" class="logo" alt="School logo">
+        <h2>School System</h2>
+        <div id="navStatus" class="nav-status">Status: Loading...</div>
+        <a id="dashboardLink" href="StudentDashboard.html">Dashboard</a>
+        <a class="active" href="Subjects.html">Subjects</a>
+        <a href="profile.html">My Profile</a>
+        <a href="#" onclick="logout(); return false;">Logout</a>
+    </aside>
+    <main class="dashboard">
+        <div class="page-heading"><div><h1>Subjects</h1><p id="pageMessage">Loading subjects...</p></div></div>
+        <section class="content-grid">
+            <article class="info-card">
+                <div class="info-header"><h2>Subject Schedule</h2><button id="addButton" class="edit-button" type="button" onclick="openForm()" hidden>Add Subject</button></div>
+                <div id="subjectList" class="user-list"></div>
+            </article>
+            <article id="subjectEditor" class="info-card" hidden>
+                <div class="info-header"><h2 id="formTitle">Add Subject</h2><button class="cancel-button" type="button" onclick="closeForm()">Cancel</button></div>
+                <form id="subjectForm" class="profile-form">
+                    <input id="subjectId" type="hidden">
+                    <div class="full-width"><label for="subjectName">Subject Name</label><input id="subjectName" required></div>
+                    <div><label for="subjectDay">Day</label><select id="subjectDay"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option></select></div>
+                    <div><label for="subjectTime">Start Time</label><input id="subjectTime" type="time" required></div>
+                    <div class="form-actions"><button class="save-button" type="submit">Save Subject</button></div>
+                </form>
+            </article>
+        </section>
+    </main>
+    <script>
+        const user = JSON.parse(localStorage.getItem("user"));
+        const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const dashboards = { student: "StudentDashboard.html", staff: "StaffDashboard.html", admin: "AdminDashboard.html" };
+
+        if (!user) location.href = "index.html";
+        else {
+            const navStatus = document.getElementById("navStatus");
+            const accountStatus = user.accountStatus || "Active";
+            navStatus.textContent = `Status: ${accountStatus}`;
+            navStatus.classList.add(accountStatus === "Active" ? "active" : "inactive");
+            document.getElementById("dashboardLink").href = dashboards[user.role] || "StudentDashboard.html";
+            if (user.role === "admin") document.getElementById("addButton").hidden = false;
+            loadSubjects();
+        }
+
+        async function loadSubjects() {
+            const message = document.getElementById("pageMessage");
+            const list = document.getElementById("subjectList");
+            try {
+                const response = await fetch(`/api/subjects?email=${encodeURIComponent(user.email)}`);
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to load subjects.");
+                message.textContent = result.subjects.length ? "Select a subject from the schedule below." : "No subjects added yet.";
+                list.replaceChildren();
+                result.subjects.forEach(subject => {
+                    const row = document.createElement("div"); row.className = "user-row";
+                    const details = document.createElement("div");
+                    const name = document.createElement("strong"); const info = document.createElement("span");
+                    name.textContent = subject.name; info.textContent = `${days[subject.dayOfWeek]} | ${subject.startTime}`;
+                    details.append(name, document.createElement("br"), info); row.append(details);
+                    if (user.role === "admin") {
+                        const edit = document.createElement("button"); edit.type = "button"; edit.className = "edit-button"; edit.textContent = "Edit"; edit.addEventListener("click", () => editSubject(subject));
+                        const remove = document.createElement("button"); remove.type = "button"; remove.className = "cancel-button"; remove.textContent = "Delete"; remove.addEventListener("click", () => deleteSubject(subject));
+                        row.append(edit, remove);
+                    }
+                    list.append(row);
+                });
+            } catch (error) { message.textContent = error.message || "Unable to load subjects."; }
+        }
+
+        function openForm() { document.getElementById("subjectForm").reset(); document.getElementById("subjectId").value = ""; document.getElementById("formTitle").textContent = "Add Subject"; document.getElementById("subjectEditor").hidden = false; }
+        function closeForm() { document.getElementById("subjectEditor").hidden = true; }
+        function editSubject(subject) { document.getElementById("subjectId").value = subject.id; document.getElementById("subjectName").value = subject.name; document.getElementById("subjectDay").value = subject.dayOfWeek; document.getElementById("subjectTime").value = subject.startTime; document.getElementById("formTitle").textContent = "Edit Subject"; document.getElementById("subjectEditor").hidden = false; }
+
+        document.getElementById("subjectForm").addEventListener("submit", async event => {
+            event.preventDefault();
+            const id = document.getElementById("subjectId").value;
+            const data = { adminEmail: user.email, name: document.getElementById("subjectName").value.trim(), dayOfWeek: Number(document.getElementById("subjectDay").value), startTime: document.getElementById("subjectTime").value };
+            if (id) data.id = Number(id);
+            try {
+                const response = await fetch("/api/admin/subjects", { method: id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+                const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to save subject.");
+                closeForm(); loadSubjects();
+            } catch (error) { alert(error.message || "Unable to save subject."); }
+        });
+
+        async function deleteSubject(subject) {
+            if (!confirm(`Delete ${subject.name}?`)) return;
+            try {
+                const response = await fetch("/api/admin/subjects", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adminEmail: user.email, id: subject.id }) });
+                const result = await response.json(); if (!response.ok || !result.success) throw new Error(result.message || "Unable to delete subject.");
+                loadSubjects();
+            } catch (error) { alert(error.message || "Unable to delete subject."); }
+        }
+        function logout() { localStorage.removeItem("user"); location.href = "index.html"; }
+    </script>
+</body>
+</html>

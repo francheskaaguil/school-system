@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Student Dashboard</title>
+</head>
+<body class="dashboard-page">
+    <aside class="sidebar">
+        <img src="2.webp" class="logo" alt="School logo">
+        <h2>School System</h2>
+        <div id="navStatus" class="nav-status">Status: Loading...</div>
+        <a class="active" href="StudentDashboard.html">Dashboard</a>
+        <a href="Subjects.html">My Subjects</a>
+        <a href="#attendance">Attendance</a>
+        <a href="profile.html">My Profile</a>
+        <a href="#" onclick="logout(); return false;">Logout</a>
+    </aside>
+    <main class="dashboard">
+        <div class="page-heading">
+            <div><h1>Dashboard</h1><p id="welcome">Welcome back!</p></div>
+        </div>
+        <section class="stats-grid">
+            <article class="stat-card"><div><small>Enrolled Subjects</small><strong id="enrolledCount">0</strong></div></article>
+            <article class="stat-card"><div><small>Current GPA</small><strong>1.75</strong></div></article>
+            <article class="stat-card"><div><small>Attendance Today</small><strong id="attendanceSummary">0 marked</strong></div></article>
+            <article class="stat-card"><div><small>Announcements</small><strong>3</strong></div></article>
+        </section>
+        <section class="content-grid">
+            <article class="info-card" id="subjects">
+                <h2>My Subjects</h2>
+                <ul id="subjectList" class="activity-list"></ul>
+            </article>
+            <article class="info-card" id="announcements">
+                <h2>Latest Announcements</h2>
+                <ul class="activity-list">
+                    <li>Midterm exam schedule posted <time>Today</time></li>
+                    <li>School program on Friday <time>Yesterday</time></li>
+                    <li>Submit projects by Sept. 20 <time>Sept. 12</time></li>
+                </ul>
+            </article>
+            <article class="info-card" id="grades">
+                <h2>My Grades</h2>
+                <ul class="activity-list">
+                    <li>Mathematics <time>1.50</time></li>
+                    <li>English <time>1.75</time></li>
+                    <li>Science <time>2.00</time></li>
+                </ul>
+            </article>
+            <article class="info-card" id="status">
+                <h2>My Status</h2>
+                <ul class="activity-list">
+                    <li>Account <time>Active</time></li>
+                    <li>Enrollment <time id="enrollmentStatus">Loading...</time></li>
+                    <li>Today's Attendance <time id="studentStatusAttendance">Not marked</time></li>
+                </ul>
+            </article>
+            <article class="info-card" id="attendance">
+                <h2>Subject Attendance</h2>
+                <p id="scheduleDate" class="muted-text"></p>
+                <p id="attendanceMessage" class="muted-text">Loading today's schedule...</p>
+                <div id="scheduledSubjects" class="user-list"></div>
+            </article>
+        </section>
+    </main>
+    <script>
+        const user = (() => {
+            try {
+                const savedUser = JSON.parse(localStorage.getItem("user"));
+                return savedUser && typeof savedUser === "object" ? savedUser : null;
+            } catch (error) {
+                return null;
+            }
+        })();
+        const today = new Date();
+        let todaySubjects = [];
+        let attendanceRecords = {};
+
+        if (!user) {
+            location.href = "index.html";
+        } else {
+            const role = user.role || "student";
+            if (role !== "student") {
+                location.href = role === "admin" ? "AdminDashboard.html" : "StaffDashboard.html";
+            } else {
+                const navStatus = document.getElementById("navStatus");
+                const accountStatus = user.accountStatus || "Active";
+                navStatus.textContent = `Status: ${accountStatus}`;
+                navStatus.classList.add(accountStatus === "Active" ? "active" : "inactive");
+                document.getElementById("welcome").textContent = `Welcome back, ${user.firstName}!`;
+                document.getElementById("scheduleDate").textContent = today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+                loadScheduleAndAttendance();
+            }
+        }
+
+        async function loadScheduleAndAttendance() {
+            try {
+                const [subjectsResponse, attendanceResponse] = await Promise.all([
+                    fetch(`/api/subjects?email=${encodeURIComponent(user.email)}`),
+                    fetch(`/api/subject-attendance?email=${encodeURIComponent(user.email)}`)
+                ]);
+                const subjectsResult = await subjectsResponse.json();
+                const attendanceResult = await attendanceResponse.json();
+                if (!subjectsResponse.ok || !subjectsResult.success) throw new Error(subjectsResult.message || "Unable to load subjects.");
+                if (!attendanceResponse.ok || !attendanceResult.success) throw new Error(attendanceResult.message || "Unable to load attendance.");
+                todaySubjects = subjectsResult.subjects.filter(subject => subject.dayOfWeek === today.getDay()).map(subject => ({ subject: subject.name, time: subject.startTime }));
+                attendanceRecords = Object.fromEntries(attendanceResult.records.map(record => [record.subject, record.status]));
+                renderSubjectList(subjectsResult.subjects);
+                renderSubjectAttendance();
+            } catch (error) {
+                document.getElementById("attendanceMessage").textContent = error.message || "Unable to load attendance.";
+            }
+        }
+
+        function renderSubjectList(subjects) {
+            const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            const list = document.getElementById("subjectList");
+            list.replaceChildren();
+            subjects.forEach(subject => {
+                const item = document.createElement("li");
+                const name = document.createTextNode(subject.name);
+                const time = document.createElement("time");
+                time.textContent = `${days[subject.dayOfWeek]} · ${subject.startTime}`;
+                item.append(name, time);
+                list.append(item);
+            });
+            document.getElementById("enrolledCount").textContent = subjects.length;
+            document.getElementById("enrollmentStatus").textContent = `${subjects.length} subjects enrolled`;
+        }
+
+        function renderSubjectAttendance() {
+            const message = document.getElementById("attendanceMessage");
+            const list = document.getElementById("scheduledSubjects");
+            list.replaceChildren();
+            const markedCount = Object.keys(attendanceRecords).length;
+            document.getElementById("attendanceSummary").textContent = `${markedCount} marked`;
+            document.getElementById("studentStatusAttendance").textContent = markedCount ? `${markedCount} subject(s) marked` : "Not marked";
+
+            if (!todaySubjects.length) {
+                message.textContent = "No subjects are scheduled today.";
+                return;
+            }
+            message.textContent = "Choose your attendance for each scheduled subject.";
+
+            todaySubjects.forEach(item => {
+                const row = document.createElement("div");
+                row.className = "user-row subject-attendance-row";
+                const details = document.createElement("div");
+                const name = document.createElement("strong");
+                const status = document.createElement("span");
+                name.textContent = item.subject;
+                status.textContent = `${item.time} | ${attendanceRecords[item.subject] || "Not marked"}`;
+                details.append(name, document.createElement("br"), status);
+
+                const buttons = document.createElement("div");
+                buttons.className = "attendance-buttons";
+                ["Present", "Late", "Absent"].forEach(attendanceStatus => {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "edit-button";
+                    button.textContent = attendanceStatus;
+                    button.addEventListener("click", () => setSubjectAttendance(item.subject, attendanceStatus));
+                    buttons.append(button);
+                });
+
+                row.append(details, buttons);
+                list.append(row);
+            });
+        }
+
+        async function setSubjectAttendance(subject, status) {
+            try {
+                const response = await fetch("/api/subject-attendance", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: user.email, subject, status })
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to update attendance.");
+                attendanceRecords[subject] = result.status;
+                renderSubjectAttendance();
+            } catch (error) {
+                alert(error.message || "Unable to update attendance.");
+            }
+        }
+
+        function logout() { localStorage.removeItem("user"); location.href = "index.html"; }
+    </script>
+</body>
+</html>

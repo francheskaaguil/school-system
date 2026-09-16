@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Staff Dashboard</title>
+</head>
+<body class="dashboard-page">
+    <aside class="sidebar">
+        <img src="2.webp" class="logo" alt="School logo">
+        <h2>School System</h2>
+        <div id="navStatus" class="nav-status">Status: Loading...</div>
+        <a class="active" href="StaffDashboard.html">Dashboard</a>
+        <a href="profile.html">Profile</a>
+        <a href="#" onclick="logout(); return false;">Logout</a>
+    </aside>
+    <main class="dashboard">
+        <div class="page-heading">
+            <div><h1>Dashboard</h1><p id="welcome">Welcome back!</p></div>
+        </div>
+        <section class="stats-grid">
+            <article class="stat-card"><div><small>Total Students</small><strong>120</strong></div></article>
+            <article class="stat-card"><div><small>Pending Tasks</small><strong>8</strong></div></article>
+            <article class="stat-card"><div><small>Attendance Today</small><strong>96%</strong></div></article>
+        </section>
+        <section class="content-grid">
+            <article class="info-card" id="students">
+                <h2>Recent Students</h2>
+                <ul class="activity-list">
+                    <li>Maria Santos <time>Grade 10</time></li>
+                    <li>John Cruz <time>Grade 9</time></li>
+                    <li>Ana Reyes <time>Grade 8</time></li>
+                </ul>
+            </article>
+            <article class="info-card" id="attendance">
+                <h2>Today's Attendance</h2>
+                <ul class="activity-list">
+                    <li>Present <time>115 students</time></li>
+                    <li>Late <time>3 students</time></li>
+                    <li>Absent <time>2 students</time></li>
+                </ul>
+            </article>
+            <article class="info-card" id="grades">
+                <h2>Grades to Review</h2>
+                <ul class="activity-list">
+                    <li>Grade 10 Mathematics <time>3 pending</time></li>
+                    <li>Grade 9 English <time>2 pending</time></li>
+                    <li>Grade 8 Science <time>3 pending</time></li>
+                </ul>
+            </article>
+            <article class="info-card" id="reports">
+                <h2>Reports</h2>
+                <ul class="activity-list">
+                    <li>Weekly attendance <time>Ready</time></li>
+                    <li>Grade summary <time>Ready</time></li>
+                </ul>
+            </article>
+            <article class="info-card" id="status">
+                <h2>My Status</h2>
+                <ul class="activity-list">
+                    <li>Account <time>Active</time></li>
+                    <li>Role <time>Staff</time></li>
+                    <li>Available Subjects <time id="staffSubjectStatus">Loading...</time></li>
+                </ul>
+            </article>
+        </section>
+    </main>
+    <script>
+        const user = (() => {
+            try {
+                const savedUser = JSON.parse(localStorage.getItem("user"));
+                return savedUser && typeof savedUser === "object" ? savedUser : null;
+            } catch (error) {
+                return null;
+            }
+        })();
+        if (!user) {
+            location.href = "index.html";
+        } else if (user.role !== "staff") {
+            location.href = user.role === "admin" ? "AdminDashboard.html" : "StudentDashboard.html";
+        } else {
+            const navStatus = document.getElementById("navStatus");
+            const accountStatus = user.accountStatus || "Active";
+            navStatus.textContent = `Status: ${accountStatus}`;
+            navStatus.classList.add(accountStatus === "Active" ? "active" : "inactive");
+            document.getElementById("welcome").textContent = `Welcome back, ${user.firstName}!`;
+            loadSubjects();
+        }
+
+        async function loadSubjects() {
+            const message = document.getElementById("subjectMessage");
+            const list = document.getElementById("subjectList");
+            try {
+                const response = await fetch(`/api/subjects?email=${encodeURIComponent(user.email)}`);
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to load subjects.");
+                const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                message.textContent = result.subjects.length ? "" : "No subjects added yet.";
+                document.getElementById("staffSubjectStatus").textContent = `${result.subjects.length} subjects`;
+                list.replaceChildren();
+                result.subjects.forEach(subject => {
+                    const item = document.createElement("li");
+                    const name = document.createTextNode(subject.name);
+                    const time = document.createElement("time");
+                    time.textContent = `${days[subject.dayOfWeek]} · ${subject.startTime}`;
+                    item.append(name, time);
+                    list.append(item);
+                });
+            } catch (error) { message.textContent = error.message || "Unable to load subjects."; }
+        }
+        function logout() { localStorage.removeItem("user"); location.href = "index.html"; }
+    </script>
+</body>
+</html>
