@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, session
 import os
 import sqlite3
 import uuid
@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__, static_folder=".", static_url_path="")
+app.secret_key = os.environ.get("APP_SECRET_KEY") or uuid.uuid4().hex
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
@@ -63,6 +64,24 @@ def ensure_db_schema():
         if "account_status" not in columns:
             db.execute("ALTER TABLE users ADD COLUMN account_status TEXT NOT NULL DEFAULT 'Active'")
         db.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id TEXT PRIMARY KEY,
+                user_email TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+                ended_at TEXT
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                actor_email TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target_email TEXT,
+                details TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        db.execute("""
             CREATE TABLE IF NOT EXISTS attendance (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL,
@@ -98,6 +117,30 @@ def ensure_db_schema():
 
 
 ensure_db_schema()
+
+
+def record_event(db, actor_email, action, target_email=None, details=""):
+    db.execute(
+        "INSERT INTO audit_log (actor_email, action, target_email, details) VALUES (?, ?, ?, ?)",
+        (actor_email, action, target_email, details)
+    )
+
+
+def logged_in_user():
+    email = session.get("user_email")
+    session_id = session.get("session_id")
+    if not email or not session_id:
+        return None
+    with get_db() as db:
+        user = db.execute(
+            "SELECT * FROM users WHERE email = ? AND account_status = 'Active'",
+            (email,)
+        ).fetchone()
+        active_session = db.execute(
+            "SELECT id FROM user_sessions WHERE id = ? AND user_email = ? AND ended_at IS NULL",
+            (session_id, email)
+        ).fetchone()
+    return user if user and active_session else None
 
 
 @app.route("/")
@@ -191,11 +234,48 @@ def login():
     if user["account_status"] != "Active":
         return jsonify(success=False, message="This account is inactive. Please contact an administrator."), 403
 
+    session_id = uuid.uuid4().hex
+    with get_db() as db:
+        db.execute("INSERT INTO user_sessions (id, user_email) VALUES (?, ?)", (session_id, user["email"]))
+        record_event(db, user["email"], "Login", user["email"], "Signed in")
+    session.clear()
+    session["user_email"] = user["email"]
+    session["session_id"] = session_id
+
     return jsonify(
         success=True,
         message="Login successful!",
         user=user_info(user)
     )
+
+
+@app.route("/api/logout", methods=["POST"])
+def logout():
+    current_user = logged_in_user()
+    if current_user:
+        email = current_user["email"]
+        with get_db() as db:
+            db.execute(
+                "UPDATE user_sessions SET ended_at = datetime('now') WHERE id = ?",
+                (session.get("session_id"),)
+            )
+            record_event(db, email, "Logout", email, "Signed out")
+    session.clear()
+    return jsonify(success=True)
+
+
+@app.route("/api/session", methods=["GET", "POST"])
+def session_status():
+    current_user = logged_in_user()
+    if not current_user:
+        return jsonify(success=False, message="Please log in first."), 401
+    if request.method == "POST":
+        with get_db() as db:
+            db.execute(
+                "UPDATE user_sessions SET last_seen_at = datetime('now') WHERE id = ?",
+                (session.get("session_id"),)
+            )
+    return jsonify(success=True, user=user_info(current_user))
 
 
 @app.route("/api/profile", methods=["GET", "PUT"])
@@ -277,6 +357,9 @@ def profile():
 def is_admin(email):
     if not email:
         return False
+    current_user = logged_in_user()
+    if not current_user or current_user["email"] != email:
+        return False
     with get_db() as db:
         user = db.execute(
             "SELECT role, account_status FROM users WHERE email = ?",
@@ -292,6 +375,9 @@ def is_admin(email):
 def is_school_user(email):
     if not email:
         return False
+    current_user = logged_in_user()
+    if not current_user or current_user["email"] != email:
+        return False
     with get_db() as db:
         user = db.execute(
             "SELECT id, account_status FROM users WHERE email = ?",
@@ -302,6 +388,57 @@ def is_school_user(email):
     row = dict(user) if isinstance(user, sqlite3.Row) else (user or {})
     status = row.get("account_status") or "Active"
     return bool(status == "Active")
+
+
+def is_staff(email):
+    if not email:
+        return False
+    current_user = logged_in_user()
+    if not current_user or current_user["email"] != email or current_user["role"] != "staff":
+        return False
+    with get_db() as db:
+        user = db.execute(
+            "SELECT role, account_status FROM users WHERE email = ?",
+            (email,)
+        ).fetchone()
+    if not user:
+        return False
+    row = dict(user) if isinstance(user, sqlite3.Row) else (user or {})
+    return bool((row.get("role") or "").lower() == "staff" and (row.get("account_status") or "Active") == "Active")
+
+
+@app.route("/api/staff/summary", methods=["GET"])
+def staff_summary():
+    email = request.args.get("email")
+    if not is_staff(email):
+        return jsonify(success=False, message="Active staff access is required."), 403
+
+    today = date.today().isoformat()
+    with get_db() as db:
+        student_count = db.execute(
+            "SELECT COUNT(*) FROM users WHERE role = 'student'"
+        ).fetchone()[0]
+        recent_students = db.execute(
+            "SELECT first_name, last_name FROM users WHERE role = 'student' ORDER BY id DESC LIMIT 5"
+        ).fetchall()
+        attendance_counts = db.execute("""
+            SELECT status, COUNT(*) AS count
+            FROM subject_attendance
+            WHERE attendance_date = ?
+            GROUP BY status
+        """, (today,)).fetchall()
+
+    attendance = {"Present": 0, "Late": 0, "Absent": 0}
+    attendance.update({row["status"]: row["count"] for row in attendance_counts})
+    return jsonify(
+        success=True,
+        studentCount=student_count,
+        recentStudents=[{
+            "firstName": student["first_name"],
+            "lastName": student["last_name"]
+        } for student in recent_students],
+        attendance=attendance
+    )
 
 
 @app.route("/api/subjects", methods=["GET"])
@@ -393,7 +530,13 @@ def admin_users():
                 SELECT COUNT(*) FROM subject_attendance
                 WHERE subject_attendance.email = users.email
                     AND subject_attendance.attendance_date = ?
-            ) AS today_attendance
+            ) AS today_attendance,
+            (SELECT MAX(created_at) FROM audit_log
+                WHERE actor_email = users.email AND action = 'Login') AS last_login_at,
+            EXISTS (SELECT 1 FROM user_sessions
+                WHERE user_sessions.user_email = users.email
+                    AND user_sessions.ended_at IS NULL
+                    AND user_sessions.last_seen_at >= datetime('now', '-2 minutes')) AS online
             FROM users WHERE role IN ('student', 'staff')
             ORDER BY role, last_name, first_name
         """, (date.today().isoformat(),)).fetchall()
@@ -401,8 +544,119 @@ def admin_users():
     for person in users:
         details = user_info(person)
         details["todayAttendance"] = person["today_attendance"]
+        details["lastLoginAt"] = person["last_login_at"] or ""
+        details["online"] = bool(person["online"])
         response_users.append(details)
     return jsonify(success=True, users=response_users)
+
+
+@app.route("/api/managed-users", methods=["GET", "POST"])
+def managed_users():
+    actor = logged_in_user()
+    if not actor or actor["role"] not in ("admin", "staff"):
+        return jsonify(success=False, message="Administrator or staff access is required."), 403
+
+    if request.method == "GET":
+        roles = ("student", "staff") if actor["role"] == "admin" else ("student",)
+        placeholders = ",".join("?" for _ in roles)
+        with get_db() as db:
+            people = db.execute(f"""
+                SELECT users.*,
+                    (SELECT MAX(created_at) FROM audit_log
+                        WHERE actor_email = users.email AND action = 'Login') AS last_login_at,
+                    EXISTS (SELECT 1 FROM user_sessions
+                        WHERE user_sessions.user_email = users.email
+                            AND user_sessions.ended_at IS NULL
+                            AND user_sessions.last_seen_at >= datetime('now', '-2 minutes')) AS online
+                FROM users WHERE role IN ({placeholders})
+                ORDER BY role, last_name, first_name
+            """, roles).fetchall()
+        result = []
+        for person in people:
+            details = user_info(person)
+            details["lastLoginAt"] = person["last_login_at"] or ""
+            details["online"] = bool(person["online"])
+            result.append(details)
+        return jsonify(success=True, users=result)
+
+    data = request.get_json() or {}
+    role = (data.get("role") or "").lower()
+    permitted_roles = ("student", "staff") if actor["role"] == "admin" else ("student",)
+    required = ["firstName", "lastName", "email", "dateOfBirth", "phone", "address", "gender", "password"]
+    if role not in permitted_roles:
+        return jsonify(success=False, message="You cannot create an account with that role."), 403
+    if not all(str(data.get(field) or "").strip() for field in required):
+        return jsonify(success=False, message="Please complete all account fields."), 400
+
+    email = data["email"].strip().lower()
+    try:
+        with get_db() as db:
+            db.execute("""
+                INSERT INTO users (first_name, last_name, email, date_of_birth, phone,
+                    address, gender, password, role)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                data["firstName"].strip(), data["lastName"].strip(), email,
+                data["dateOfBirth"], data["phone"].strip(), data["address"].strip(),
+                data["gender"], generate_password_hash(data["password"]), role
+            ))
+            record_event(db, actor["email"], "Account created", email, f"Created {role} account")
+        return jsonify(success=True, message=f"{role.title()} account created successfully."), 201
+    except sqlite3.IntegrityError:
+        return jsonify(success=False, message="Email is already registered."), 400
+
+
+@app.route("/api/managed-users/<path:email>", methods=["PUT"])
+def update_managed_user(email):
+    actor = logged_in_user()
+    if not actor or actor["role"] not in ("admin", "staff"):
+        return jsonify(success=False, message="Administrator or staff access is required."), 403
+
+    data = request.get_json() or {}
+    required = ["firstName", "lastName", "dateOfBirth", "phone", "address", "gender"]
+    if not all(str(data.get(field) or "").strip() for field in required):
+        return jsonify(success=False, message="Please complete all profile fields."), 400
+
+    with get_db() as db:
+        target = db.execute("SELECT role FROM users WHERE email = ?", (email,)).fetchone()
+        if not target or target["role"] not in (("student", "staff") if actor["role"] == "admin" else ("student",)):
+            return jsonify(success=False, message="You cannot edit that account."), 403
+
+        account_status = target["role"] and "Active"
+        if actor["role"] == "admin":
+            account_status = data.get("accountStatus", "Active")
+            if account_status not in ("Active", "Inactive"):
+                return jsonify(success=False, message="Choose a valid account status."), 400
+
+        db.execute("""
+            UPDATE users SET first_name = ?, last_name = ?, date_of_birth = ?, phone = ?,
+                address = ?, gender = ?, account_status = ?
+            WHERE email = ?
+        """, (
+            data["firstName"].strip(), data["lastName"].strip(), data["dateOfBirth"],
+            data["phone"].strip(), data["address"].strip(), data["gender"], account_status, email
+        ))
+        record_event(db, actor["email"], "Account updated", email, f"Updated {target['role']} account")
+    return jsonify(success=True, message="Account updated successfully.")
+
+
+@app.route("/api/admin/activity", methods=["GET"])
+def admin_activity():
+    admin_email = request.args.get("adminEmail")
+    if not is_admin(admin_email):
+        return jsonify(success=False, message="Administrator access is required."), 403
+    with get_db() as db:
+        events = db.execute("""
+            SELECT audit_log.actor_email, audit_log.action, audit_log.target_email,
+                audit_log.details, audit_log.created_at,
+                actor.first_name AS actor_first_name, actor.last_name AS actor_last_name,
+                target.first_name AS target_first_name, target.last_name AS target_last_name
+            FROM audit_log
+            LEFT JOIN users AS actor ON actor.email = audit_log.actor_email
+            LEFT JOIN users AS target ON target.email = audit_log.target_email
+            ORDER BY audit_log.id DESC LIMIT 100
+        """).fetchall()
+    return jsonify(success=True, events=[dict(event) for event in events])
 
 
 @app.route("/api/admin/users/<path:email>", methods=["PUT"])
