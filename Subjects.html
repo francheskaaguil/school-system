@@ -13,11 +13,17 @@
         <div id="navStatus" class="nav-status">Status: Loading...</div>
         <a id="dashboardLink" href="StudentDashboard.html">Dashboard</a>
         <a class="active" href="Subjects.html">Subjects</a>
+        <a id="attendanceLink" href="Attendance.html">Attendance</a>
+        <a id="recordsLink" href="Records.html" hidden>Grades & Announcements</a>
         <a href="profile.html">My Profile</a>
         <a href="#" onclick="logout(); return false;">Logout</a>
     </aside>
     <main class="dashboard">
-        <div class="page-heading"><div><h1>Subjects</h1><p id="pageMessage">Loading subjects...</p></div></div>
+        <div class="page-heading"><div>
+            <h1>Subjects</h1>
+            <p id="pageMessage">Loading subjects...</p>
+        </div>
+    </div>
         <section class="content-grid">
             <article class="info-card">
                 <div class="info-header"><h2>Subject Schedule</h2><button id="addButton" class="edit-button" type="button" onclick="openForm()" hidden>Add Subject</button></div>
@@ -47,6 +53,8 @@
             navStatus.textContent = `Status: ${accountStatus}`;
             navStatus.classList.add(accountStatus === "Active" ? "active" : "inactive");
             document.getElementById("dashboardLink").href = dashboards[user.role] || "StudentDashboard.html";
+            document.getElementById("attendanceLink").hidden = false;
+            document.getElementById("recordsLink").hidden = !["staff", "admin"].includes(user.role);
             if (user.role === "admin") document.getElementById("addButton").hidden = false;
             loadSubjects();
         }

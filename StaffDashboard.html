@@ -12,6 +12,9 @@
         <h2>School System</h2>
         <div id="navStatus" class="nav-status">Status: Loading...</div>
         <a class="active" href="StaffDashboard.html">Dashboard</a>
+        <a href="Subjects.html">Subjects</a>
+        <a href="Attendance.html">Attendance</a>
+        <a href="Records.html">Grades & Announcements</a>
         <a href="profile.html">Profile</a>
         <a href="#" onclick="logout(); return false;">Logout</a>
     </aside>
@@ -20,49 +23,33 @@
             <div><h1>Dashboard</h1><p id="welcome">Welcome back!</p></div>
         </div>
         <section class="stats-grid">
-            <article class="stat-card"><div><small>Total Students</small><strong>120</strong></div></article>
-            <article class="stat-card"><div><small>Pending Tasks</small><strong>8</strong></div></article>
-            <article class="stat-card"><div><small>Attendance Today</small><strong>96%</strong></div></article>
+            <article class="stat-card"><div><small>Active Students</small><strong id="studentCount">Loading...</strong></div></article>
+            <article class="stat-card"><div><small>Attendance Records Today</small><strong id="attendanceCount">Loading...</strong></div></article>
+            <article class="stat-card"><div><small>Grades Recorded</small><strong id="gradeCount">Loading...</strong></div></article>
+            <article class="stat-card"><div><small>Announcements</small><strong id="announcementCount">Loading...</strong></div></article>
         </section>
         <section class="content-grid">
-            <article class="info-card" id="students">
-                <h2>Recent Students</h2>
-                <ul class="activity-list">
-                    <li>Maria Santos <time>Grade 10</time></li>
-                    <li>John Cruz <time>Grade 9</time></li>
-                    <li>Ana Reyes <time>Grade 8</time></li>
-                </ul>
-            </article>
             <article class="info-card" id="attendance">
-                <h2>Today's Attendance</h2>
+                <div class="info-header"><h2>Today's Attendance</h2><a class="edit-button" href="Attendance.html">Manage Attendance</a></div>
+                <p id="staffAttendanceMessage" class="muted-text">Loading attendance...</p>
                 <ul class="activity-list">
-                    <li>Present <time>115 students</time></li>
-                    <li>Late <time>3 students</time></li>
-                    <li>Absent <time>2 students</time></li>
-                </ul>
-            </article>
-            <article class="info-card" id="grades">
-                <h2>Grades to Review</h2>
-                <ul class="activity-list">
-                    <li>Grade 10 Mathematics <time>3 pending</time></li>
-                    <li>Grade 9 English <time>2 pending</time></li>
-                    <li>Grade 8 Science <time>3 pending</time></li>
-                </ul>
-            </article>
-            <article class="info-card" id="reports">
-                <h2>Reports</h2>
-                <ul class="activity-list">
-                    <li>Weekly attendance <time>Ready</time></li>
-                    <li>Grade summary <time>Ready</time></li>
+                    <li>Present <time id="presentCount">0</time></li>
+                    <li>Late <time id="lateCount">0</time></li>
+                    <li>Absent <time id="absentCount">0</time></li>
                 </ul>
             </article>
             <article class="info-card" id="status">
                 <h2>My Status</h2>
                 <ul class="activity-list">
-                    <li>Account <time>Active</time></li>
+                    <li>Account <time id="accountStatus">Active</time></li>
                     <li>Role <time>Staff</time></li>
                     <li>Available Subjects <time id="staffSubjectStatus">Loading...</time></li>
                 </ul>
+            </article>
+            <article class="info-card">
+                <h2>School Records</h2>
+                <p class="muted-text">Manage student grades and post school announcements.</p>
+                <a class="edit-button" href="Records.html">Open Grades & Announcements</a>
             </article>
         </section>
     </main>
@@ -84,30 +71,42 @@
             const accountStatus = user.accountStatus || "Active";
             navStatus.textContent = `Status: ${accountStatus}`;
             navStatus.classList.add(accountStatus === "Active" ? "active" : "inactive");
+            document.getElementById("accountStatus").textContent = accountStatus;
             document.getElementById("welcome").textContent = `Welcome back, ${user.firstName}!`;
-            loadSubjects();
+            loadDashboard();
         }
 
-        async function loadSubjects() {
-            const message = document.getElementById("subjectMessage");
-            const list = document.getElementById("subjectList");
+        async function loadDashboard() {
             try {
-                const response = await fetch(`/api/subjects?email=${encodeURIComponent(user.email)}`);
-                const result = await response.json();
-                if (!response.ok || !result.success) throw new Error(result.message || "Unable to load subjects.");
-                const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-                message.textContent = result.subjects.length ? "" : "No subjects added yet.";
-                document.getElementById("staffSubjectStatus").textContent = `${result.subjects.length} subjects`;
-                list.replaceChildren();
-                result.subjects.forEach(subject => {
-                    const item = document.createElement("li");
-                    const name = document.createTextNode(subject.name);
-                    const time = document.createElement("time");
-                    time.textContent = `${days[subject.dayOfWeek]} · ${subject.startTime}`;
-                    item.append(name, time);
-                    list.append(item);
-                });
-            } catch (error) { message.textContent = error.message || "Unable to load subjects."; }
+                const [overviewResponse, subjectsResponse] = await Promise.all([
+                    fetch(`/api/staff/overview?email=${encodeURIComponent(user.email)}`),
+                    fetch(`/api/subjects?email=${encodeURIComponent(user.email)}`)
+                ]);
+                const overviewResult = await overviewResponse.json();
+                const subjectsResult = await subjectsResponse.json();
+                if (!overviewResponse.ok || !overviewResult.success) {
+                    throw new Error(overviewResult.message || "Unable to load dashboard information.");
+                }
+                if (!subjectsResponse.ok || !subjectsResult.success) {
+                    throw new Error(subjectsResult.message || "Unable to load subjects.");
+                }
+
+                const overview = overviewResult.overview;
+                document.getElementById("studentCount").textContent = overview.studentCount;
+                document.getElementById("attendanceCount").textContent = overview.attendanceCount;
+                document.getElementById("gradeCount").textContent = overview.gradeCount;
+                document.getElementById("announcementCount").textContent = overview.announcementCount;
+                document.getElementById("presentCount").textContent = overview.presentCount;
+                document.getElementById("lateCount").textContent = overview.lateCount;
+                document.getElementById("absentCount").textContent = overview.absentCount;
+                document.getElementById("staffSubjectStatus").textContent =
+                    `${subjectsResult.subjects.length} subject(s)`;
+                document.getElementById("staffAttendanceMessage").textContent =
+                    overview.attendanceCount ? "Attendance records for today." : "No attendance has been recorded today.";
+            } catch (error) {
+                document.getElementById("staffAttendanceMessage").textContent =
+                    error.message || "Unable to load dashboard information.";
+            }
         }
         function logout() { localStorage.removeItem("user"); location.href = "index.html"; }
     </script>

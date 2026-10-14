@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Grades & Announcements</title>
+</head>
+<body class="dashboard-page">
+    <aside class="sidebar">
+        <img src="2.webp" class="logo" alt="School logo">
+        <h2>School System</h2>
+        <div id="navStatus" class="nav-status">Status: Loading...</div>
+        <a id="dashboardLink" href="StaffDashboard.html">Dashboard</a>
+        <a href="Subjects.html">Subjects</a>
+        <a href="Attendance.html">Attendance</a>
+        <a class="active" href="Records.html">Grades & Announcements</a>
+        <a href="profile.html">My Profile</a>
+        <a href="#" onclick="logout(); return false;">Logout</a>
+    </aside>
+
+    <main class="dashboard">
+        <div class="page-heading">
+            <div>
+                <h1>Grades & Announcements</h1>
+                <p>Manage student grades and share school updates.</p>
+            </div>
+        </div>
+
+        <section class="content-grid">
+            <article class="info-card">
+                <div class="info-header">
+                    <h2 id="gradeFormTitle">Add Student Grade</h2>
+                    <button id="cancelGradeEdit" class="cancel-button" type="button" onclick="resetGradeForm()" hidden>Cancel</button>
+                </div>
+                <p class="muted-text">Enter a grade from 1.00 (highest) to 5.00.</p>
+                <form id="gradeForm" class="profile-form">
+                    <input id="gradeId" type="hidden">
+                    <div class="full-width">
+                        <label for="studentEmail">Student</label>
+                        <select id="studentEmail" required><option value="">Loading students...</option></select>
+                    </div>
+                    <div class="full-width">
+                        <label for="gradeSubject">Subject</label>
+                        <select id="gradeSubject" required><option value="">Loading subjects...</option></select>
+                    </div>
+                    <div>
+                        <label for="gradeTerm">Term / School Year</label>
+                        <input id="gradeTerm" maxlength="60" placeholder="e.g. First Semester 2026-2027" required>
+                    </div>
+                    <div>
+                        <label for="gradeValue">Grade</label>
+                        <input id="gradeValue" type="number" min="1" max="5" step="0.01" required>
+                    </div>
+                    <div class="form-actions">
+                        <button class="save-button" type="submit">Save Grade</button>
+                    </div>
+                </form>
+            </article>
+            <article class="info-card">
+                <h2>Student Grades</h2>
+                <p id="gradeMessage" class="muted-text">Loading grades...</p>
+                <div id="gradeList" class="user-list"></div>
+            </article>
+        </section>
+
+        <section class="content-grid">
+            <article class="info-card">
+                <div class="info-header">
+                    <h2 id="announcementFormTitle">Post Announcement</h2>
+                    <button id="cancelAnnouncementEdit" class="cancel-button" type="button" onclick="resetAnnouncementForm()" hidden>Cancel</button>
+                </div>
+                <form id="announcementForm">
+                    <input id="announcementId" type="hidden">
+                    <label for="announcementTitle">Title</label>
+                    <input id="announcementTitle" maxlength="160" required>
+                    <label for="announcementContent">Announcement</label>
+                    <textarea id="announcementContent" rows="5" maxlength="5000" required></textarea>
+                    <button class="save-button" type="submit">Post Announcement</button>
+                </form>
+            </article>
+            <article class="info-card">
+                <h2>School Announcements</h2>
+                <p id="announcementMessage" class="muted-text">Loading announcements...</p>
+                <div id="announcementList" class="user-list"></div>
+            </article>
+        </section>
+    </main>
+
+    <script>
+        const user = (() => {
+            try {
+                const savedUser = JSON.parse(localStorage.getItem("user"));
+                return savedUser && typeof savedUser === "object" ? savedUser : null;
+            } catch (error) {
+                return null;
+            }
+        })();
+        const dashboardPages = {
+            admin: "AdminDashboard.html",
+            staff: "StaffDashboard.html"
+        };
+
+        if (!user) {
+            location.href = "index.html";
+        } else if (!["admin", "staff"].includes(user.role)) {
+            location.href = "StudentDashboard.html";
+        } else {
+            const navStatus = document.getElementById("navStatus");
+            const accountStatus = user.accountStatus || "Active";
+            navStatus.textContent = `Status: ${accountStatus}`;
+            navStatus.classList.add(accountStatus === "Active" ? "active" : "inactive");
+            document.getElementById("dashboardLink").href = dashboardPages[user.role];
+            loadRecordsPage();
+        }
+
+        async function requestJson(url, options) {
+            const response = await fetch(url, options);
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "The request could not be completed.");
+            }
+            return result;
+        }
+
+        async function loadRecordsPage() {
+            const emailQuery = encodeURIComponent(user.email);
+            try {
+                const [studentsResult, subjectsResult, gradesResult, announcementsResult] = await Promise.all([
+                    requestJson(`/api/school/users?editorEmail=${emailQuery}`),
+                    requestJson(`/api/subjects?email=${emailQuery}`),
+                    requestJson(`/api/grades?editorEmail=${emailQuery}`),
+                    requestJson(`/api/announcements?email=${emailQuery}`)
+                ]);
+                fillSelect("studentEmail", studentsResult.users, "email", person =>
+                    `${person.firstName} ${person.lastName} (${person.email})`);
+                fillSelect("gradeSubject", subjectsResult.subjects, "name", subject => subject.name);
+                renderGrades(gradesResult.grades);
+                renderAnnouncements(announcementsResult.announcements);
+            } catch (error) {
+                document.getElementById("gradeMessage").textContent =
+                    error.message || "Unable to load school records.";
+                document.getElementById("announcementMessage").textContent =
+                    error.message || "Unable to load school records.";
+            }
+        }
+
+        function fillSelect(id, items, valueKey, labelFor) {
+            const select = document.getElementById(id);
+            select.replaceChildren(new Option(items.length ? "Choose..." : "No records available", ""));
+            items.forEach(item => select.add(new Option(labelFor(item), item[valueKey])));
+        }
+
+        function renderGrades(grades) {
+            const message = document.getElementById("gradeMessage");
+            const list = document.getElementById("gradeList");
+            list.replaceChildren();
+            message.textContent = grades.length ? "" : "No grades have been recorded yet.";
+
+            grades.forEach(grade => {
+                const row = document.createElement("div");
+                row.className = "user-row";
+                const details = document.createElement("div");
+                const name = document.createElement("strong");
+                const info = document.createElement("span");
+                name.textContent = grade.studentName;
+                info.textContent = `${grade.subject} | ${grade.term} | Grade: ${Number(grade.grade).toFixed(2)}`;
+                details.append(name, document.createElement("br"), info);
+                const editButton = document.createElement("button");
+                editButton.type = "button";
+                editButton.className = "edit-button";
+                editButton.textContent = "Edit";
+                editButton.addEventListener("click", () => editGrade(grade));
+                const deleteButton = document.createElement("button");
+                deleteButton.type = "button";
+                deleteButton.className = "cancel-button";
+                deleteButton.textContent = "Delete";
+                deleteButton.addEventListener("click", () => deleteGrade(grade));
+                row.append(details, editButton, deleteButton);
+                list.append(row);
+            });
+        }
+
+        function editGrade(grade) {
+            document.getElementById("gradeId").value = grade.id;
+            document.getElementById("studentEmail").value = grade.studentEmail;
+            document.getElementById("gradeSubject").value = grade.subject;
+            document.getElementById("gradeTerm").value = grade.term;
+            document.getElementById("gradeValue").value = grade.grade;
+            document.getElementById("gradeFormTitle").textContent = "Edit Student Grade";
+            document.getElementById("cancelGradeEdit").hidden = false;
+            document.getElementById("gradeFormTitle").scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        function resetGradeForm() {
+            document.getElementById("gradeForm").reset();
+            document.getElementById("gradeId").value = "";
+            document.getElementById("gradeFormTitle").textContent = "Add Student Grade";
+            document.getElementById("cancelGradeEdit").hidden = true;
+        }
+
+        document.getElementById("gradeForm").addEventListener("submit", async event => {
+            event.preventDefault();
+            const id = document.getElementById("gradeId").value;
+            const data = {
+                editorEmail: user.email,
+                studentEmail: document.getElementById("studentEmail").value,
+                subject: document.getElementById("gradeSubject").value,
+                term: document.getElementById("gradeTerm").value.trim(),
+                grade: Number(document.getElementById("gradeValue").value)
+            };
+            if (id) data.id = Number(id);
+            try {
+                await requestJson("/api/grades", {
+                    method: id ? "PUT" : "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data)
+                });
+                resetGradeForm();
+                await loadRecordsPage();
+            } catch (error) {
+                alert(error.message || "Unable to save grade.");
+            }
+        });
+
+        async function deleteGrade(grade) {
+            if (!confirm(`Delete ${grade.studentName}'s ${grade.subject} grade for ${grade.term}?`)) return;
+            try {
+                await requestJson("/api/grades", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ editorEmail: user.email, id: grade.id })
+                });
+                await loadRecordsPage();
+            } catch (error) {
+                alert(error.message || "Unable to delete grade.");
+            }
+        }
+
+        function renderAnnouncements(announcements) {
+            const message = document.getElementById("announcementMessage");
+            const list = document.getElementById("announcementList");
+            list.replaceChildren();
+            message.textContent = announcements.length ? "" : "No announcements have been posted yet.";
+
+            announcements.forEach(announcement => {
+                const row = document.createElement("div");
+                row.className = "user-row";
+                const details = document.createElement("div");
+                const title = document.createElement("strong");
+                const content = document.createElement("p");
+                const author = document.createElement("span");
+                title.textContent = announcement.title;
+                content.textContent = announcement.content;
+                author.textContent = `Posted by ${announcement.createdBy}`;
+                details.append(title, content, author);
+                const editButton = document.createElement("button");
+                editButton.type = "button";
+                editButton.className = "edit-button";
+                editButton.textContent = "Edit";
+                editButton.addEventListener("click", () => editAnnouncement(announcement));
+                const deleteButton = document.createElement("button");
+                deleteButton.type = "button";
+                deleteButton.className = "cancel-button";
+                deleteButton.textContent = "Delete";
+                deleteButton.addEventListener("click", () => deleteAnnouncement(announcement));
+                row.append(details, editButton, deleteButton);
+                list.append(row);
+            });
+        }
+
+        function editAnnouncement(announcement) {
+            document.getElementById("announcementId").value = announcement.id;
+            document.getElementById("announcementTitle").value = announcement.title;
+            document.getElementById("announcementContent").value = announcement.content;
+            document.getElementById("announcementFormTitle").textContent = "Edit Announcement";
+            document.getElementById("cancelAnnouncementEdit").hidden = false;
+            document.getElementById("announcementFormTitle").scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        function resetAnnouncementForm() {
+            document.getElementById("announcementForm").reset();
+            document.getElementById("announcementId").value = "";
+            document.getElementById("announcementFormTitle").textContent = "Post Announcement";
+            document.getElementById("cancelAnnouncementEdit").hidden = true;
+        }
+
+        document.getElementById("announcementForm").addEventListener("submit", async event => {
+            event.preventDefault();
+            const id = document.getElementById("announcementId").value;
+            const data = {
+                editorEmail: user.email,
+                title: document.getElementById("announcementTitle").value.trim(),
+                content: document.getElementById("announcementContent").value.trim()
+            };
+            if (id) data.id = Number(id);
+            try {
+                await requestJson("/api/announcements", {
+                    method: id ? "PUT" : "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data)
+                });
+                resetAnnouncementForm();
+                await loadRecordsPage();
+            } catch (error) {
+                alert(error.message || "Unable to save announcement.");
+            }
+        });
+
+        async function deleteAnnouncement(announcement) {
+            if (!confirm(`Delete the announcement "${announcement.title}"?`)) return;
+            try {
+                await requestJson("/api/announcements", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ editorEmail: user.email, id: announcement.id })
+                });
+                await loadRecordsPage();
+            } catch (error) {
+                alert(error.message || "Unable to delete announcement.");
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem("user");
+            location.href = "index.html";
+        }
+    </script>
+</body>
+</html>

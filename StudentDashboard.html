@@ -13,7 +13,7 @@
         <div id="navStatus" class="nav-status">Status: Loading...</div>
         <a class="active" href="StudentDashboard.html">Dashboard</a>
         <a href="Subjects.html">My Subjects</a>
-        <a href="#attendance">Attendance</a>
+        <a href="Attendance.html">Attendance</a>
         <a href="profile.html">My Profile</a>
         <a href="#" onclick="logout(); return false;">Logout</a>
     </aside>
@@ -23,9 +23,9 @@
         </div>
         <section class="stats-grid">
             <article class="stat-card"><div><small>Enrolled Subjects</small><strong id="enrolledCount">0</strong></div></article>
-            <article class="stat-card"><div><small>Current GPA</small><strong>1.75</strong></div></article>
+            <article class="stat-card"><div><small>Grade Average</small><strong id="gradeAverage">No grades</strong></div></article>
             <article class="stat-card"><div><small>Attendance Today</small><strong id="attendanceSummary">0 marked</strong></div></article>
-            <article class="stat-card"><div><small>Announcements</small><strong>3</strong></div></article>
+            <article class="stat-card"><div><small>Announcements</small><strong id="announcementCount">0</strong></div></article>
         </section>
         <section class="content-grid">
             <article class="info-card" id="subjects">
@@ -34,19 +34,13 @@
             </article>
             <article class="info-card" id="announcements">
                 <h2>Latest Announcements</h2>
-                <ul class="activity-list">
-                    <li>Midterm exam schedule posted <time>Today</time></li>
-                    <li>School program on Friday <time>Yesterday</time></li>
-                    <li>Submit projects by Sept. 20 <time>Sept. 12</time></li>
-                </ul>
+                <p id="announcementMessage" class="muted-text">Loading announcements...</p>
+                <ul id="announcementList" class="activity-list"></ul>
             </article>
             <article class="info-card" id="grades">
                 <h2>My Grades</h2>
-                <ul class="activity-list">
-                    <li>Mathematics <time>1.50</time></li>
-                    <li>English <time>1.75</time></li>
-                    <li>Science <time>2.00</time></li>
-                </ul>
+                <p id="gradeMessage" class="muted-text">Loading grades...</p>
+                <ul id="gradeList" class="activity-list"></ul>
             </article>
             <article class="info-card" id="status">
                 <h2>My Status</h2>
@@ -96,20 +90,31 @@
 
         async function loadScheduleAndAttendance() {
             try {
-                const [subjectsResponse, attendanceResponse] = await Promise.all([
+                const [subjectsResponse, attendanceResponse, gradesResponse, announcementsResponse] = await Promise.all([
                     fetch(`/api/subjects?email=${encodeURIComponent(user.email)}`),
-                    fetch(`/api/subject-attendance?email=${encodeURIComponent(user.email)}`)
+                    fetch(`/api/subject-attendance?email=${encodeURIComponent(user.email)}`),
+                    fetch(`/api/grades?email=${encodeURIComponent(user.email)}`),
+                    fetch(`/api/announcements?email=${encodeURIComponent(user.email)}`)
                 ]);
                 const subjectsResult = await subjectsResponse.json();
                 const attendanceResult = await attendanceResponse.json();
+                const gradesResult = await gradesResponse.json();
+                const announcementsResult = await announcementsResponse.json();
                 if (!subjectsResponse.ok || !subjectsResult.success) throw new Error(subjectsResult.message || "Unable to load subjects.");
                 if (!attendanceResponse.ok || !attendanceResult.success) throw new Error(attendanceResult.message || "Unable to load attendance.");
+                if (!gradesResponse.ok || !gradesResult.success) throw new Error(gradesResult.message || "Unable to load grades.");
+                if (!announcementsResponse.ok || !announcementsResult.success) throw new Error(announcementsResult.message || "Unable to load announcements.");
                 todaySubjects = subjectsResult.subjects.filter(subject => subject.dayOfWeek === today.getDay()).map(subject => ({ subject: subject.name, time: subject.startTime }));
                 attendanceRecords = Object.fromEntries(attendanceResult.records.map(record => [record.subject, record.status]));
                 renderSubjectList(subjectsResult.subjects);
                 renderSubjectAttendance();
+                renderGrades(gradesResult.grades);
+                renderAnnouncements(announcementsResult.announcements);
             } catch (error) {
-                document.getElementById("attendanceMessage").textContent = error.message || "Unable to load attendance.";
+                const message = error.message || "Unable to load dashboard information.";
+                document.getElementById("attendanceMessage").textContent = message;
+                document.getElementById("gradeMessage").textContent = message;
+                document.getElementById("announcementMessage").textContent = message;
             }
         }
 
@@ -127,6 +132,45 @@
             });
             document.getElementById("enrolledCount").textContent = subjects.length;
             document.getElementById("enrollmentStatus").textContent = `${subjects.length} subjects enrolled`;
+        }
+
+        function renderGrades(grades) {
+            const message = document.getElementById("gradeMessage");
+            const list = document.getElementById("gradeList");
+            list.replaceChildren();
+            document.getElementById("gradeAverage").textContent = grades.length
+                ? (grades.reduce((total, item) => total + Number(item.grade), 0) / grades.length).toFixed(2)
+                : "No grades";
+            message.textContent = grades.length ? "" : "No grades have been recorded yet.";
+            grades.slice(0, 5).forEach(grade => {
+                const item = document.createElement("li");
+                const subject = document.createTextNode(grade.subject);
+                const value = document.createElement("time");
+                value.textContent = `${Number(grade.grade).toFixed(2)} · ${grade.term}`;
+                item.append(subject, value);
+                list.append(item);
+            });
+        }
+
+        function renderAnnouncements(announcements) {
+            const message = document.getElementById("announcementMessage");
+            const list = document.getElementById("announcementList");
+            list.replaceChildren();
+            document.getElementById("announcementCount").textContent = announcements.length;
+            message.textContent = announcements.length ? "" : "No announcements have been posted yet.";
+            announcements.slice(0, 5).forEach(announcement => {
+                const item = document.createElement("li");
+                const details = document.createElement("div");
+                const title = document.createElement("strong");
+                const content = document.createElement("p");
+                const author = document.createElement("small");
+                title.textContent = announcement.title;
+                content.textContent = announcement.content;
+                author.textContent = `Posted by ${announcement.createdBy}`;
+                details.append(title, content, author);
+                item.append(details);
+                list.append(item);
+            });
         }
 
         function renderSubjectAttendance() {

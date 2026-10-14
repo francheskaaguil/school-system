@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Attendance</title>
+</head>
+<body class="dashboard-page">
+    <aside class="sidebar">
+        <img src="2.webp" class="logo" alt="School logo">
+        <h2>School System</h2>
+        <div id="navStatus" class="nav-status">Status: Loading...</div>
+        <a id="dashboardLink" href="StudentDashboard.html">Dashboard</a>
+        <a href="Subjects.html">Subjects</a>
+        <a class="active" href="Attendance.html">Attendance</a>
+        <a id="recordsLink" href="Records.html" hidden>Grades & Announcements</a>
+        <a href="profile.html">My Profile</a>
+        <a id="logoutLink" href="#">Logout</a>
+    </aside>
+
+    <main class="dashboard">
+        <div class="page-heading">
+            <div>
+                <h1>Attendance</h1>
+                <p id="attendanceDate"></p>
+            </div>
+        </div>
+        <section class="info-card">
+            <h2 id="attendanceTitle">Today's Attendance</h2>
+            <p id="attendanceMessage" class="muted-text">Loading attendance...</p>
+            <div id="attendanceList" class="user-list"></div>
+        </section>
+    </main>
+
+    <script src="attendance.js"></script>
+</body>
+</html>

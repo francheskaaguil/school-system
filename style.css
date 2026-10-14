@@ -417,14 +417,50 @@ body {
 }
 
 input,
-select {
+select,
+textarea {
     background: #fff;
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
     outline: none;
     box-shadow: 0 0 0 3px rgba(23, 74, 139, .12);
+}
+
+textarea {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font: inherit;
+    resize: vertical;
+}
+
+#announcementList .user-row,
+#gradeList .user-row {
+    align-items: flex-start;
+}
+
+#announcementList p {
+    margin: 8px 0;
+    white-space: pre-wrap;
+}
+
+#announcementList small {
+    color: #667085;
+}
+
+.info-header .edit-button,
+.dashboard .edit-button[href] {
+    display: inline-block;
+    text-decoration: none;
+}
+
+.dashboard .edit-button[href]:hover {
+    color: #fff;
 }
 
 .dashboard-page {
