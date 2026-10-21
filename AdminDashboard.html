@@ -59,8 +59,8 @@
                 <form id="subjectForm" class="profile-form">
                     <input id="subjectId" type="hidden">
                     <div class="full-width"><label for="subjectName">Subject Name</label><input id="subjectName" required></div>
-                    <div><label for="subjectDay">Day</label><select id="subjectDay" required><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option></select></div>
-                    <div><label for="subjectTime">Start Time</label><input id="subjectTime" type="time" required></div>
+                    <div><label for="subjectDay">Day</label><select id="subjectDay" required><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="7">Sunday</option></select></div>
+                    <div><label for="subjectTime">Start Time</label><input id="subjectTime" type="text" inputmode="text" placeholder="e.g. 8:30 AM" pattern="(0?[1-9]|1[0-2]):[0-5][0-9] (AM|PM)" title="Enter a time like 8:30 AM" required></div>
                     <div class="form-actions"><button class="save-button" type="submit">Save Subject</button></div>
                 </form>
             </article>
@@ -263,7 +263,7 @@
                 const response = await fetch(`/api/subjects?email=${encodeURIComponent(user.email)}`);
                 const result = await response.json();
                 if (!response.ok || !result.success) throw new Error(result.message || "Unable to load subjects.");
-                const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                const days = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
                 document.getElementById("subjectCount").textContent = result.subjects.length;
                 document.getElementById("adminSubjectStatus").textContent = `${result.subjects.length} subjects active`;
                 message.textContent = result.subjects.length ? "" : "No subjects added yet.";

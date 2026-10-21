@@ -3,7 +3,7 @@ import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
@@ -15,6 +15,17 @@ ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 def allowed_image(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+
+
+def format_subject_time(value):
+    normalized = value.strip().upper()
+    for time_format in ("%H:%M", "%I:%M %p"):
+        try:
+            parsed_time = datetime.strptime(normalized, time_format)
+            return parsed_time.strftime("%I:%M %p").lstrip("0")
+        except ValueError:
+            continue
+    raise ValueError(f"Unsupported subject time format: {value!r}")
 
 
 @contextmanager
@@ -353,7 +364,7 @@ def subjects():
     with get_db() as db:
         rows = db.execute("SELECT * FROM subjects ORDER BY day_of_week, start_time, name").fetchall()
     return jsonify(success=True, subjects=[{
-        "id": row["id"], "name": row["name"], "dayOfWeek": row["day_of_week"], "startTime": row["start_time"]
+        "id": row["id"], "name": row["name"], "dayOfWeek": row["day_of_week"], "startTime": format_subject_time(row["start_time"])
     } for row in rows])
 
 
@@ -595,9 +606,19 @@ def admin_subjects():
 
     name = (data.get("name") or "").strip()
     day = data.get("dayOfWeek")
-    start_time = (data.get("startTime") or "").strip()
-    if not name or not isinstance(day, int) or day < 1 or day > 5 or not start_time:
-        return jsonify(success=False, message="Complete the subject name, weekday, and time."), 400
+    raw_start_time = data.get("startTime")
+    start_time_input = raw_start_time.strip() if isinstance(raw_start_time, str) else ""
+    if not name or not isinstance(day, int) or day < 1 or day > 7 or not start_time_input:
+        return jsonify(success=False, message="Complete the subject name, day, and time."), 400
+    start_time = None
+    for time_format in ("%I:%M %p", "%H:%M"):
+        try:
+            start_time = datetime.strptime(start_time_input.upper(), time_format).strftime("%H:%M")
+            break
+        except ValueError:
+            continue
+    if start_time is None:
+        return jsonify(success=False, message="Enter the start time in 12-hour format, such as 8:30 AM."), 400
     try:
         with get_db() as db:
             if request.method == "POST":

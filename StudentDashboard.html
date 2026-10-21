@@ -14,6 +14,7 @@
         <a class="active" href="StudentDashboard.html">Dashboard</a>
         <a href="Subjects.html">My Subjects</a>
         <a href="Attendance.html">Attendance</a>
+        <a href="Records.html">Grades & Announcements</a>
         <a href="profile.html">My Profile</a>
         <a href="#" onclick="logout(); return false;">Logout</a>
     </aside>
@@ -119,7 +120,7 @@
         }
 
         function renderSubjectList(subjects) {
-            const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            const days = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
             const list = document.getElementById("subjectList");
             list.replaceChildren();
             subjects.forEach(subject => {
